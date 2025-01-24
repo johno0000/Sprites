@@ -3,89 +3,75 @@
 import os
 from PIL import Image
 import numpy as np
-import sklearn.cluster
 from sklearn.cluster import DBSCAN
+import matplotlib.pyplot as plt
 
+# Function to plot only bright pixels
+def plot_bright_pixels(bright_pixel_coords, labels):
+    if len(bright_pixel_coords) == 0:
+        print("No bright pixels to plot.")
+        return
+
+    # Separate coordinates into X and Y for plotting
+    y_coords, x_coords = bright_pixel_coords.T
+
+    # Plot the bright pixels
+    plt.figure(figsize=(10, 6))
+    plt.scatter(x_coords, y_coords, c='red', s=1, label='Bright Pixels')  # Reduced point size
+    plt.title("Bright Pixels")
+    plt.xlabel("X Coordinate")
+    plt.ylabel("Y Coordinate")
+    plt.gca().invert_yaxis()  # Invert Y-axis for image-like visualization
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+# Function to convert TIFF to numpy array
 def tiff_to_array(file_path):
-    # Open the TIFF file with PIL
     with Image.open(file_path) as img:
-        # Convert the image to a numpy array
         array = np.array(img)
     return array
 
+# Function to find the highest value in a 2D array
+def find_highest_value(array):
+    max_value = np.max(array)
+    max_coords = np.argwhere(array == max_value)
+    return max_value, max_coords
+
+# Function to count files in a folder
 def count_files_in_folder(folder_path):
     file_count = 0
-    
-    # Walk through the directory
     for root, dirs, files in os.walk(folder_path):
-        file_count += len(files)  # Increment count by number of files in this directory
-    
+        file_count += len(files)
     return file_count
 
+# Load folder and process files
 folder_path = r'C:\Users\Stormberg\OneDrive\Desktop\490\Ty_Frames'
 number_of_files = count_files_in_folder(folder_path)
-
 Frame_List = []
+brightness_threshold = 25  # Adjust this value based on your needs
 
-# Set the brightness threshold
-brightness_threshold = 24  # Adjust this value based on your needs (0-255 scale for grayscale images)
+sprite_num = 1
 
-# for i in range(1, number_of_files + 1):  # Loop through the files
-formatted_number = '%06d' % i
-file_path = r'C:\Users\Stormberg\OneDrive\Desktop\490\Ty_Frames\output_' + formatted_number + '.tiff'
-cropped_im = r"C:\Users\Stormberg\OneDrive\Desktop\490\test\cropped_" + formatted_number + ".tiff" 
-image = Image.open(file_path)
+for i in range(1, number_of_files + 1):
+    formatted_number = f'{i:06d}'
+    sf_number = f'{sprite_num:03d}'
+    file_path = os.path.join(folder_path, f'output_{formatted_number}.tiff')
+    cropped_im = os.path.join(r"C:\Users\Stormberg\OneDrive\Desktop\490\test", f'cropped_{sf_number}.tiff')
 
-# Define the crop box (left, upper, right, lower)
-crop_box = (0, 0, 720, 387)  # Replace with your desired crop coordinates
+    image = Image.open(file_path)
+    crop_box = (0, 0, 720, 387)
+    cropped_image = image.crop(crop_box)
 
-# Perform the crop
-cropped_image = image.crop(crop_box)
+    grayscale_image = cropped_image.convert('L')
+    brightness_array = np.array(grayscale_image)
+    avg_brightness = np.median(brightness_array)
 
-# Calculate the average brightness
-# Convert to grayscale if the image is not already grayscale
-grayscale_image = cropped_image.convert('L')  # 'L' mode converts to grayscale
-brightness_array = np.array(grayscale_image)
-avg_brightness = np.mean(brightness_array)
-
-# Check if the brightness is above the threshold
-if avg_brightness >= brightness_threshold:
-    # Save the cropped image
-    cropped_image.save(cropped_im)
-    
-    # Convert the TIFF to a numeric array and append to Frame_List
-    tiff_array = tiff_to_array(cropped_im)
-    Frame_List.append(tiff_array)
-else:
-    print(f"Frame {i} skipped: {avg_brightness}")
-    
-# DBSCAN Clustering Section
-sprite_frames = []  # List to store frames with detected sprites
-dbscan_eps = 2  # Maximum distance between points in a cluster
-dbscan_min_samples = 5  # Minimum points required to form a cluster
-#Above values were suggested starting point by Dr Ortberg
-
-# for idx, tiff_array in enumerate(Frame_List):
-#     # Identify bright pixels (potential sprite points)
-bright_pixel_coords = np.argwhere(tiff_array > brightness_threshold)
-
-#     # Skip frames with no bright pixels
-#     if len(bright_pixel_coords) == 0:
-#         print(f"Frame {idx + 1}: No bright pixels found.")
-#         continue
-
-#     # Apply DBSCAN clustering
-    
-#     clustering = DBSCAN(eps=dbscan_eps, min_samples=dbscan_min_samples).fit(bright_pixel_coords)
-#     labels = clustering.labels_
-
-#     # Check if any cluster was detected (label != -1)
-#     if np.any(labels != -1):
-#         sprite_frames.append((idx, bright_pixel_coords, labels))
-#         print(f"Frame {idx + 1}: Sprite detected with {len(set(labels)) - (1 if -1 in labels else 0)} clusters.")
-#     else:
-#         print(f"Frame {idx + 1}: No clusters detected.")
-
-# Process sprite_frames for further analysis
-print(f"Total frames with detected sprites: {len(sprite_frames)}")
+    if avg_brightness >= brightness_threshold:
+        sprite_num += 1
+        cropped_image.save(cropped_im)
+        tiff_array = tiff_to_array(cropped_im)
+        Frame_List.append(tiff_array)
+    else:
+        print(f"Frame {i} skipped: {avg_brightness}")
 
