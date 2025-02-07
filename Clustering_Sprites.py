@@ -9,25 +9,32 @@ from PIL import Image
 import numpy as np
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
+import pandas as pd
 
-# Function to plot only bright pixels
-def plot_bright_pixels(bright_pixel_coords, labels):
+# Function to plot bright pixels and filter clusters by size
+def plot_bright_pixels_with_filtering(bright_pixel_coords, labels):
     if len(bright_pixel_coords) == 0:
         print("No bright pixels to plot.")
         return
 
-    # Separate coordinates into X and Y for plotting
-    y_coords, x_coords = bright_pixel_coords.T
-
-    # Plot the bright pixels
+    # Count occurrences of each cluster label
+    unique_labels, counts = np.unique(labels, return_counts=True)
+    
+    # Define valid clusters (true if >= 70 pixels, false otherwise)
+    cluster_validity = {label: count >= 70 for label, count in zip(unique_labels, counts)}
+    
     plt.figure(figsize=(10, 6))
-    plt.scatter(x_coords, y_coords, c='red', s=1, label='Bright Pixels')  # Reduced point size
-    plt.title("Bright Pixels")
+
+    # Assign colors based on validity
+    for label in unique_labels:
+        mask = labels == label
+        cluster_color = 'red' if label >= 0 and cluster_validity.get(label, False) else 'black'
+        plt.scatter(bright_pixel_coords[mask, 1], bright_pixel_coords[mask, 0], c=cluster_color, s=1)
+
+    plt.title("Filtered Bright Pixels by Cluster Size")
     plt.xlabel("X Coordinate")
     plt.ylabel("Y Coordinate")
     plt.gca().invert_yaxis()  # Invert Y-axis for image-like visualization
-    plt.legend()
-    plt.grid(True)
     plt.show()
 
 # Function to convert TIFF to numpy array
@@ -38,45 +45,50 @@ def tiff_to_array(file_path):
 
 # Function to count files in a folder
 def count_files_in_folder(folder_path):
-    file_count = 0
-    for root, dirs, files in os.walk(folder_path):
-        file_count += len(files)
-    return file_count
+    return sum(len(files) for _, _, files in os.walk(folder_path))
 
 # Load folder and process files
-folder_path = r'C:\Users\Stormberg\OneDrive\Desktop\490\test'
+folder_path = r'C:\Users\tstro\OneDrive\Desktop\490\test\test'
 number_of_files = count_files_in_folder(folder_path)
 Frame_List = []
 
-for i in range(1, number_of_files+1):
+for i in range(1, number_of_files + 1):
     formatted_number = f'{i:03d}'
-    cropped_im = os.path.join(r"C:\Users\Stormberg\OneDrive\Desktop\490\test", f'cropped_{formatted_number}.tiff')  
+    cropped_im = os.path.join(folder_path, f'cropped_{formatted_number}.tiff')
+
+    if not os.path.exists(cropped_im):
+        print(f"Warning: {cropped_im} not found. Skipping.")
+        continue
+
     tiff_array = tiff_to_array(cropped_im)
     Frame_List.append(tiff_array)
 
-        
-# DBSCAN Clustering Section
-sprite_frames = []
-dbscan_eps = 2.9
+# DBSCAN Clustering Parameters
+dbscan_eps = 2
 dbscan_min_samples = 5
 
+sprite_frames = []
+bright_pixel_coords = []
+clustering = []
+labels = []
+Frames = []
+
 for idx, tiff_array in enumerate(Frame_List):
-    bright_pixel_coords = np.argwhere(tiff_array > 50)
+    # Extract bright pixels
+    bright_pixel_coords.append(np.argwhere(tiff_array > 50))
 
-    if len(bright_pixel_coords) == 0:
-        print(f"Frame {idx + 1}: No bright pixels found.")
-        continue
 
-    clustering = DBSCAN(eps=dbscan_eps, min_samples=dbscan_min_samples).fit(bright_pixel_coords)
-    labels = clustering.labels_
+    # Apply DBSCAN clustering
+    clustering.append(DBSCAN(eps=dbscan_eps, min_samples=dbscan_min_samples).fit(bright_pixel_coords[idx]))
+    labels.append(clustering[idx].labels_)
+    Bright_df = pd.DataFrame(bright_pixel_coords[idx], columns=['Y', 'X'])
+    Bright_df.insert(2, 'Label', clustering[idx].labels_)
+    Bright_df['Counts'] = Bright_df.groupby('Label')['Label'].transform('count')
+    Frames.append(Bright_df)
+    
+    plot_bright_pixels_with_filtering(bright_pixel_coords[idx], labels[idx])
+    # Count unique clusters
+    # unique_labels, counts = np.unique(labels[idx], return_counts=True)
+    # num_clusters = sum(count >= 70 for count in counts if count > 0)
 
-    if np.any(labels != -1):
-        sprite_frames.append((idx, bright_pixel_coords, labels))
-        print(f"Frame {idx + 1}: Sprite detected with {len(set(labels)) - (1 if -1 in labels else 0)} clusters.")
-    else:
-        print(f"Frame {idx + 1}: No clusters detected.")
 
-print(f"Total frames with detected sprites: {len(sprite_frames)}")
-
-for frame_idx, bright_pixel_coords, labels in sprite_frames:
-    plot_bright_pixels(bright_pixel_coords, labels)
